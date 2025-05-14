@@ -2,9 +2,9 @@ import math
 import sys
 
 from PyQt5 import QtCore
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                            QHBoxLayout, QPushButton, QComboBox, QLabel, 
-                            QTabWidget, QGroupBox, QGridLayout, QMessageBox)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QComboBox, QLabel,
+                             QTabWidget, QGroupBox, QGridLayout, QMessageBox, QSpinBox)
 from PyQt5.QtCore import Qt, QThreadPool
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage
 import matplotlib
@@ -270,18 +270,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('多智能体强化学习训练平台')
         self.setGeometry(100, 100, 1200, 800)
         self.num_agents = 5
-        
+
         self.init_environment()
         self.init_algorithms()
         self.init_ui()
-        
+
         self.training_thread = None
         self.is_training = False
 
         self.threadpool = QThreadPool()
         self.Render = eval(self.render_box.currentText())
 
-        
+
     def init_environment(self):
         # 初始化环境
         self.environments = {
@@ -290,7 +290,7 @@ class MainWindow(QMainWindow):
             "复杂地图": AircraftEnv(map_size=(150, 150), num_agents=self.num_agents)
         }
         self.current_env = self.environments["简单地图"]
-    
+
     def init_algorithms(self):
         # 初始化算法
         self.algorithms = {
@@ -301,44 +301,58 @@ class MainWindow(QMainWindow):
             "MAPPO": lambda env: MAPPO(env),
         }
         self.current_algorithm = self.algorithms["Q-learning"](self.current_env)
-    
+
     def init_ui(self):
         # 创建主部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         # 主布局
         main_layout = QHBoxLayout(central_widget)
-        
+
         # 左侧控制面板
         control_panel = QWidget()
         control_panel.setMaximumWidth(300)
         control_layout = QVBoxLayout(control_panel)
-        
+
         # 算法选择
         algorithm_group = QGroupBox("选择算法")
         algorithm_layout = QVBoxLayout()
-        
+
         self.algorithm_combo = QComboBox()
         self.algorithm_combo.addItems(list(self.algorithms.keys()))
         self.algorithm_combo.currentTextChanged.connect(self.on_algorithm_changed)
-        
+
         algorithm_layout.addWidget(QLabel("算法:"))
         algorithm_layout.addWidget(self.algorithm_combo)
         algorithm_group.setLayout(algorithm_layout)
-        
+
         # 地图选择
         map_group = QGroupBox("选择地图")
         map_layout = QVBoxLayout()
-        
+
         self.map_combo = QComboBox()
         self.map_combo.addItems(list(self.environments.keys()))
         self.map_combo.currentTextChanged.connect(self.on_map_changed)
-        
+
         map_layout.addWidget(QLabel("地图:"))
         map_layout.addWidget(self.map_combo)
         map_group.setLayout(map_layout)
-        
+
+        # 智能体数量选择
+        agents_group = QGroupBox("智能体设置")
+        agents_layout = QVBoxLayout()
+
+        self.agents_label = QLabel("智能体数量:")
+        self.agents_input = QSpinBox()
+        self.agents_input.setRange(1, 50)
+        self.agents_input.setValue(self.num_agents)
+        self.agents_input.valueChanged.connect(self.on_agents_changed)
+
+        agents_layout.addWidget(self.agents_label)
+        agents_layout.addWidget(self.agents_input)
+        agents_group.setLayout(agents_layout)
+
         # 训练参数
         params_group = QGroupBox("训练参数")
         params_layout = QGridLayout()
@@ -353,7 +367,7 @@ class MainWindow(QMainWindow):
         self.episodes_input = QComboBox()
         self.episodes_input.addItems(["50", "100", "200", "500", "1000"])
         self.episodes_input.setCurrentText("100")
-        
+
         params_layout.addWidget(self.render_label, 0, 0)
         params_layout.addWidget(self.render_box, 0, 1)
         params_layout.addWidget(self.episodes_label, 1, 0)
@@ -367,61 +381,72 @@ class MainWindow(QMainWindow):
 
         # 控制按钮
         button_layout = QHBoxLayout()
-        
+
         self.start_button = QPushButton("开始训练")
         self.start_button.clicked.connect(self.on_start_training)
-        
+
         self.stop_button = QPushButton("停止训练")
         self.stop_button.clicked.connect(self.on_stop_training)
         self.stop_button.setEnabled(False)
-        
+
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
-        
+
         # 添加到控制面板
         control_layout.addWidget(algorithm_group)
         control_layout.addWidget(map_group)
+        control_layout.addWidget(agents_group)
         control_layout.addWidget(params_group)
         control_layout.addWidget(self.hyperparams_group)
         control_layout.addLayout(button_layout)
         control_layout.addStretch()
-        
+
         # 右侧显示区域
         display_panel = QWidget()
         display_layout = QVBoxLayout(display_panel)
-        
+
         # 创建标签页
         self.tabs = QTabWidget()
-        
+
         # 地图显示标签页
         self.map_tab = QWidget()
         self.map_tab_layout = QVBoxLayout(self.map_tab)
         self.map_canvas = MapCanvas(self.current_env)
         self.map_tab_layout.addWidget(self.map_canvas)
         self.tabs.addTab(self.map_tab, "地图显示")
-        
+
         # 智能体状态标签页
         self.status_tab = QWidget()
         self.status_tab_layout = QVBoxLayout(self.status_tab)
         self.agent_status = AgentStatusWidget()
         self.status_tab_layout.addWidget(self.agent_status)
         self.tabs.addTab(self.status_tab, "智能体状态")
-        
+
         # 奖励曲线标签页
         self.rewards_tab = QWidget()
         self.rewards_tab_layout = QVBoxLayout(self.rewards_tab)
         self.rewards_canvas = RewardsCanvas()
         self.rewards_tab_layout.addWidget(self.rewards_canvas)
         self.tabs.addTab(self.rewards_tab, "奖励曲线")
-        
+
         display_layout.addWidget(self.tabs)
-        
+
         # 添加到主布局
         main_layout.addWidget(control_panel)
         main_layout.addWidget(display_panel, 1)
 
         # 初始化超参数显示
         self.show_hyperparams()
+
+    def on_agents_changed(self, value):
+        self.num_agents = value
+        self.init_environment()
+        self.current_env = self.environments[self.map_combo.currentText()]
+        self.map_canvas.env = self.current_env
+        self.map_canvas.update_canvas()
+        self.agent_status.update_status(self.current_env)
+        self.current_algorithm = self.algorithms[self.algorithm_combo.currentText()](self.current_env)
+        print(f"智能体数量已设置为: {self.num_agents}")
 
     def on_algorithm_changed(self, algorithm_name):
         self.current_algorithm = self.algorithms[algorithm_name](self.current_env)
@@ -439,53 +464,53 @@ class MainWindow(QMainWindow):
 
     def on_render_changed(self, render_name):
         self.Render = eval(render_name)
-    
+
     def on_start_training(self):
         if self.is_training:
             return
-            
+
         if self.current_algorithm is None:
             QMessageBox.warning(self, "警告", "请先选择算法")
             return
-            
+
         self.is_training = True
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        
+
         # 获取训练回合数
         num_episodes = int(self.episodes_input.currentText())
-        
+
         # 创建训练线程
         self.training_thread = TrainingThread(self.current_env, self.current_algorithm, num_episodes)
         self.training_thread.update_signal.connect(self.on_training_update)
         self.training_thread.finished_signal.connect(self.on_training_finished)
         self.training_thread.start()
-    
+
     def on_stop_training(self):
         if self.training_thread and self.is_training:
             self.training_thread.running = False
             self.is_training = False
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
-    
+
     def on_training_update(self, data):
         # 更新智能体状态
         if self.Render:
             self.agent_status.update_status(self.current_env)
             # 更新地图显示
             self.map_canvas.repaint_canvas(data["positions"])
-        
+
         # 更新奖励曲线
         if 'rewards' in data:
             self.rewards_canvas.update_plot(data['rewards'])
-    
+
     def on_training_finished(self, data):
         if self.training_thread:
             self.training_thread = False
         self.is_training = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
-        
+
         QMessageBox.information(self, "训练完成", "训练已完成!")
 
     def show_hyperparams(self):

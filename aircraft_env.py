@@ -3,18 +3,25 @@ from gym import Env, spaces
 import random
 import math
 
+def is_overlap(x1, y1, r1, x2, y2, r2):
+    """判断两个圆是否重叠"""
+    return (x1 - x2) ** 2 + (y1 - y2) ** 2 < (r1 + r2) ** 2
+
+def is_point_in_circle(px, py, cx, cy, cr):
+    """判断点是否在圆内"""
+    return (px - cx) ** 2 + (py - cy) ** 2 < cr ** 2
 
 class AircraftEnv(Env):
-    def __init__(self, map_size=(100, 100), num_agents=5, num_obstacles=10, num_targets=5):
+    def __init__(self, map_size=(100, 100), num_agents=5, num_obstacles=10, num_targets=8):
         super().__init__()
         self.map_size = map_size
         self.num_agents = num_agents
-        self.num_obstacles = num_obstacles
+        self.num_obstacles = int(num_obstacles * map_size[0] / 50)
         self.num_targets = num_targets
 
-        self.obstacle_buffer = 5  # 障碍物之间的安全距离
-        self.agent_spawn_buffer = 15  # 飞机生成与障碍物的安全距离
-        self.target_spawn_buffer = 15  # 目标点生成与障碍物的安全距离
+        self.obstacle_buffer = 2  # 障碍物之间的安全距离
+        self.agent_spawn_buffer = 6  # 飞机生成与障碍物的安全距离
+        self.target_spawn_buffer = 3 # 目标点生成与障碍物的安全距离
 
         # 定义动作空间 (航向和油门)
         self.action_space = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
@@ -35,9 +42,107 @@ class AircraftEnv(Env):
 
         self.reset()
 
+    def _generate_obstacles(self):
+        self.obstacles = []
+        obstacle_radius = 3
+        self.max_attempts = 1000
+
+        for _ in range(self.num_obstacles):
+            for _ in range(self.max_attempts):
+                x = random.randint(obstacle_radius, self.map_size[0] - obstacle_radius)
+                y = random.randint(obstacle_radius, self.map_size[1] - 20)
+                # 检查与已有障碍物不重叠
+                if all(not is_overlap(x, y, obstacle_radius + self.target_spawn_buffer, o['x'], o['y'], o['radius']) for o in self.obstacles):
+                    self.obstacles.append({'x': x, 'y': y, 'radius': obstacle_radius})
+                    break
+            else:
+                print("障碍物初始化失败，尝试次数过多")
+
+    def _generate_targets(self):
+        self.targets = []
+        max_attempts = 1000
+
+        for _ in range(self.num_targets):
+            attempt = 0
+            while attempt < max_attempts:
+                x = random.randint(3, self.map_size[0]-3)
+                y = random.randint(3, self.map_size[1]-3)
+
+                # 检查与障碍物的距离
+                too_close = False
+                for obs in self.obstacles:
+                    dist = math.sqrt((x - obs['x']) ** 2 + (y - obs['y']) ** 2)
+                    if dist < (obs['radius'] + self.target_spawn_buffer):
+                        too_close = True
+                        break
+
+                # 检查与其他目标点的距离
+                for target in self.targets:
+                    dist = math.sqrt((x - target['x']) ** 2 + (y - target['y']) ** 2)
+                    if dist < 20:  # 目标点之间的最小距离
+                        too_close = True
+                        break
+
+                if not too_close:
+                    self.targets.append({
+                        'x': x,
+                        'y': y,
+                        'active': True
+                    })
+                    break
+
+                attempt += 1
+
+    def _initialize_agents(self):
+        self.agents = []
+        positions = []
+
+        # 下边
+        for i in range(self.num_agents):
+            x = int((i + 1) * self.map_size[0] / (self.num_agents+1))
+            y = self.map_size[1]
+            positions.append((x, y))
+
+        for x, y in positions:
+            # 检查不与障碍物/目标点重叠
+            if any(is_overlap(x, y, 1, o['x'], o['y'], o['radius']) for o in self.obstacles):
+                continue
+            if any(x == t['x'] and y == t['y'] for t in self.targets):
+                continue
+            agent = {
+                'z': 1,
+                'x': x,
+                'y': y,
+                'speed_x': random.uniform(-5 / 60, 5 / 60),
+                'speed_y': random.uniform(15 / 60, 20 / 60),
+                'speed_z': 0,
+                'theta': -math.pi/2,
+                'F': 0,
+                'dead': False,
+                'die_time': 0,
+                'vision': 120,
+                'volume': 50,
+                'bulleted_num': 0,
+                'damaged': 0,
+                'blood': 100,
+                'healthy': 100,
+                'attack_range': 5
+            }
+            self.agents.append(agent)
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
+        self._generate_obstacles()
+        self._generate_targets()
+        self._initialize_agents()
+
+        # 初始化被攻击的目标
+        self.attacked_targets = []
+        self.agent_positions = self._get_position()
+        return self._get_observations(), {}
+
+    def _init_sth(self):
         # 初始化飞机位置
         self.agents = []
         for _ in range(self.num_agents):
@@ -81,12 +186,6 @@ class AircraftEnv(Env):
                 'active': True
             }
             self.targets.append(target)
-
-        # 初始化被攻击的目标
-        self.attacked_targets = []
-        self.agent_positions = self._get_position()
-        return self._get_observations(), {}
-
     def step(self, actions):
         rewards = np.zeros(self.num_agents)
         dones = np.full(self.num_agents, False)
