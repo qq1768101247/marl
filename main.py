@@ -3,7 +3,9 @@ import sys
 import matplotlib
 from PyQt5.QtCore import QThreadPool
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QPushButton, QComboBox, QTabWidget, QGroupBox,
-                             QGridLayout, QMessageBox, QSpinBox)
+                             QGridLayout, QMessageBox, QSpinBox, QFrame)
+
+from evaluation_thread import EvaluationThread
 
 matplotlib.use('Qt5Agg')
 from aircraft_env import AircraftEnv
@@ -24,16 +26,36 @@ class AgentStatusWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.initUI()
-        
+
     def initUI(self):
         layout = QVBoxLayout()
-        
+        layout.setSpacing(10)
+
+        self.status_frame = QFrame()
+        self.status_frame.setStyleSheet("""
+            QFrame {
+                background-color: #112240;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QLabel {
+                color: #CCD6F6;
+                font-size: 14px;
+                padding: 5px;
+            }
+        """)
+
+        status_layout = QVBoxLayout(self.status_frame)
         self.status_labels = []
-        for i in range(5):  # 最多显示5个智能体
-            label = QLabel(f"智能体 {i+1}: 未初始化")
+
+        for i in range(6):  # 最多显示5个智能体
+            label = QLabel(f"智能体 {i + 1}: 未初始化")
+            label.setStyleSheet("border-bottom: 1px solid #303C55;")
             self.status_labels.append(label)
-            layout.addWidget(label)
-        
+            status_layout.addWidget(label)
+
+        layout.addWidget(QLabel("智能体状态:"))
+        layout.addWidget(self.status_frame)
         self.setLayout(layout)
 
     def update_status(self, env):
@@ -47,9 +69,113 @@ class AgentStatusWidget(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.Render = False
         self.setWindowTitle('多智能体强化学习训练平台')
         self.setGeometry(100, 100, 1200, 800)
-        self.num_agents = 5
+        self.num_agents = 6
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #0A192F;
+            }
+            QGroupBox {
+                background-color: #112240;
+                border: 1px solid #303C55;
+                border-radius: 8px;
+                margin-top: 10px;
+                color: #CCD6F6;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
+                background-color: #0A192F;
+                border-radius: 5px;
+            }
+            QLabel {
+                color: #CCD6F6;
+                font-size: 14px;
+            }
+            QComboBox {
+                background-color: #1E3A8A;
+                color: #CCD6F6;
+                border: 1px solid #3B82F6;
+                border-radius: 4px;
+                padding: 5px;
+                min-height: 25px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left-width: 1px;
+                border-left-color: #3B82F6;
+                border-left-style: solid;
+                border-top-right-radius: 3px;
+                border-bottom-right-radius: 3px;
+            }
+            QSpinBox {
+                background-color: #1E3A8A;
+                color: #CCD6F6;
+                border: 1px solid #3B82F6;
+                border-radius: 4px;
+                padding: 5px;
+                min-height: 25px;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 16px;
+                border-left: 1px solid #3B82F6;
+            }
+            QPushButton {
+                background-color: #3B82F6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #2563EB;
+            }
+            QPushButton:pressed {
+                background-color: #1D4ED8;
+            }
+            QPushButton:disabled {
+                background-color: #60A5FA;
+                color: #DBEAFE;
+            }
+            QTabWidget::pane {
+                border: 1px solid #303C55;
+                border-radius: 8px;
+                background-color: #0A192F;
+                margin-top: -2px;
+            }
+            QTabBar::tab {
+                background-color: #112240;
+                color: #CCD6F6;
+                border: 1px solid #303C55;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #0A192F;
+                color: #3B82F6;
+                font-weight: bold;
+                border-color: #3B82F6;
+                border-bottom: 1px solid #0A192F;
+                margin-bottom: -1px;
+            }
+            QTabBar::tab:hover:not(:selected) {
+                background-color: #1E3A8A;
+            }
+        """)
+
 
         self.init_environment()
         self.init_algorithms()
@@ -57,17 +183,18 @@ class MainWindow(QMainWindow):
 
         self.training_thread = None
         self.is_training = False
+        self.evaluation_thread = None
 
         self.threadpool = QThreadPool()
-        self.Render = eval(self.render_box.currentText())
+
 
 
     def init_environment(self):
         # 初始化环境
         self.environments = {
-            "简单地图": AircraftEnv(map_size=(50, 50), num_agents=self.num_agents),
-            "中等地图": AircraftEnv(map_size=(100, 100), num_agents=self.num_agents),
-            "复杂地图": AircraftEnv(map_size=(150, 150), num_agents=self.num_agents)
+            "简单地图": AircraftEnv(num_agents=self.num_agents),
+            "中等地图": AircraftEnv(num_agents=self.num_agents),
+            "复杂地图": AircraftEnv(num_agents=self.num_agents)
         }
         self.current_env = self.environments["简单地图"]
 
@@ -142,6 +269,7 @@ class MainWindow(QMainWindow):
         self.render_box.addItems(['True', 'False'])
         self.render_box.setCurrentText("100")
         self.render_box.currentTextChanged.connect(self.on_render_changed)
+        self.Render = eval(self.render_box.currentText())
 
         self.episodes_label = QLabel("训练回合数:")
         self.episodes_input = QComboBox()
@@ -169,8 +297,12 @@ class MainWindow(QMainWindow):
         self.stop_button.clicked.connect(self.on_stop_training)
         self.stop_button.setEnabled(False)
 
+        self.eva_button = QPushButton("Evaluation")
+        self.eva_button.clicked.connect(self.on_start_evaluation)
+
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
+        button_layout.addWidget(self.eva_button)
 
         # 添加到控制面板
         control_layout.addWidget(algorithm_group)
@@ -187,11 +319,40 @@ class MainWindow(QMainWindow):
 
         # 创建标签页
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #303C55;
+                border-radius: 8px;
+                background-color: #0A192F;
+                padding: 10px;
+            }
+            QTabBar::tab {
+                background-color: #112240;
+                color: #CCD6F6;
+                border: 1px solid #303C55;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #0A192F;
+                color: #3B82F6;
+                font-weight: bold;
+                border-color: #3B82F6;
+                border-bottom: 1px solid #0A192F;
+                margin-bottom: -1px;
+            }
+            QTabBar::tab:hover:not(:selected) {
+                background-color: #1E3A8A;
+            }
+        """)
 
         # 地图显示标签页
         self.map_tab = QWidget()
         self.map_tab_layout = QVBoxLayout(self.map_tab)
-        self.map_canvas = MapCanvas(self.current_env)
+        self.map_canvas = MapCanvas(self.current_env, self.Render)
         self.map_tab_layout.addWidget(self.map_canvas)
         self.tabs.addTab(self.map_tab, "地图显示")
 
@@ -205,7 +366,7 @@ class MainWindow(QMainWindow):
         # 奖励曲线标签页
         self.rewards_tab = QWidget()
         self.rewards_tab_layout = QVBoxLayout(self.rewards_tab)
-        self.rewards_canvas = RewardsCanvas()
+        self.rewards_canvas = RewardsCanvas(self.num_agents)
         self.rewards_tab_layout.addWidget(self.rewards_canvas)
         self.tabs.addTab(self.rewards_tab, "奖励曲线")
 
@@ -244,6 +405,7 @@ class MainWindow(QMainWindow):
 
     def on_render_changed(self, render_name):
         self.Render = eval(render_name)
+        self.map_canvas.set_render(self.Render)
 
     def on_start_training(self):
         if self.is_training:
@@ -266,23 +428,39 @@ class MainWindow(QMainWindow):
         self.training_thread.finished_signal.connect(self.on_training_finished)
         self.training_thread.start()
 
+    def on_start_evaluation(self):
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        self.eva_button.setEnabled(False)
+        num_episodes = int(self.episodes_input.currentText())
+
+        self.evaluation_thread = EvaluationThread(self.current_env, self.current_algorithm, num_episodes)
+        self.evaluation_thread.update_signal.connect(self.on_training_update)
+        self.evaluation_thread.finished_signal.connect(self.on_training_finished)
+        self.evaluation_thread.start()
+        pass
     def on_stop_training(self):
         if self.training_thread and self.is_training:
             self.training_thread.running = False
             self.is_training = False
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
+        if self.evaluation_thread:
+            self.evaluation_thread.running = False
+            self.start_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
+
 
     def on_training_update(self, data):
         # 更新智能体状态
         if self.Render:
             self.agent_status.update_status(self.current_env)
             # 更新地图显示
-            self.map_canvas.repaint_canvas(data["positions"])
-
+            # self.map_canvas.repaint_canvas(data["positions"])
         # 更新奖励曲线
         if 'rewards' in data:
-            self.rewards_canvas.update_plot(data['rewards'])
+            self.rewards_canvas.update_plot(data['rewards'], data['actor_losses'],
+                                            data['critic_losses'], data['entropies'])
 
     def on_training_finished(self, data):
         if self.training_thread:

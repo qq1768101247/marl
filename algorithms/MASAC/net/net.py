@@ -11,43 +11,27 @@ tau = 1e-2
 
 class ActorNet(nn.Module):
     """Actor，观测维度 state_dim"""
+    def __init__(self,inp,outp):
+        super(ActorNet, self).__init__()
+        self.in_to_y1=nn.Linear(inp,256)
+        self.in_to_y1.weight.data.normal_(0,0.1)
+        self.y1_to_y2=nn.Linear(256,256)
+        self.y1_to_y2.weight.data.normal_(0,0.1)
+        self.out=nn.Linear(256,outp)
+        self.out.weight.data.normal_(0,0.1)
+        self.std_out = nn.Linear(256, outp)
+        self.std_out.weight.data.normal_(0, 0.1)
 
-    def __init__(self, state_dim, action_dim):
-        super().__init__()
-        # 共享特征提取层
-        self.shared_net = nn.Sequential(
-            nn.Linear(state_dim, 256),
-            nn.LayerNorm(256),  # 增加层归一化
-            nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.LayerNorm(256),
-            nn.ReLU()
-        )
-        # 均值输出
-        self.mean_out = nn.Sequential(
-            nn.Linear(256, action_dim),
-            nn.Tanh()  # 输出范围[-1,1]
-        )
-        # 对数标准差输出
-        self.log_std_out = nn.Linear(256, action_dim)
-
-        # 初始化优化
-        self._init_weights()
-        self.to(device=C.device, dtype=C.DTYPE)
-
-    def _init_weights(self):
-        for layer in self.shared_net:
-            if isinstance(layer, nn.Linear):
-                nn.init.orthogonal_(layer.weight, gain=np.sqrt(2))  # 正交初始化更适合RL
-                nn.init.constant_(layer.bias, 0.0)
-        nn.init.uniform_(self.log_std_out.weight, -1e-3, 1e-3)  # 小范围初始化log_std
-
-    def forward(self, state):
-        features = self.shared_net(state)
-        mean = self.mean_out(features) * C.max_action  # 缩放到动作范围
-        log_std = self.log_std_out(features)
-        log_std = torch.clamp(log_std, -20, 2)  # 限制标准差范围
-        return mean, log_std.exp()
+    def forward(self,inputstate):
+        inputstate=self.in_to_y1(inputstate)
+        inputstate=F.relu(inputstate)
+        inputstate=self.y1_to_y2(inputstate)
+        inputstate=F.relu(inputstate)
+        mean=C.max_action*torch.tanh(self.out(inputstate))#输出概率分布的均值mean
+        log_std=self.std_out(inputstate)#softplus激活函数的值域>0
+        log_std=torch.clamp(log_std,-20,2)
+        std=log_std.exp()
+        return mean,std
 
 
 class Actor:
@@ -115,11 +99,11 @@ class CriticNet(nn.Module):
         return self.q1_head(features), self.q2_head(features)  # 每个头输出单个Q值
 
 class Critic:
-    def __init__(self, state_dim_leader, state_dim_follower, N_Agent, M_Enemy, action_dim):
+    def __init__(self, state_dim_leader, N_Agent, action_dim):
         # self.critic_v,self.target_critic_v=(CriticNet(C.state_dim_leader * C.N_Agent + C.state_dim_follower * C.M_Enemy, C.action_number),
         #                                     CriticNet(C.state_dim_leader * C.N_Agent + C.state_dim_follower * C.M_Enemy, C.action_number))#改网络输入状态，生成一个Q值
-        self.critic_v,self.target_critic_v=(CriticNet(state_dim_leader * N_Agent + state_dim_follower * M_Enemy, action_dim),
-                                            CriticNet(state_dim_leader * N_Agent + state_dim_follower * M_Enemy, action_dim))#改网络输入状态，生成一个Q值
+        self.critic_v,self.target_critic_v=(CriticNet(state_dim_leader * N_Agent, action_dim),
+                                            CriticNet(state_dim_leader * N_Agent, action_dim))#改网络输入状态，生成一个Q值
         self.target_critic_v.load_state_dict(self.critic_v.state_dict())
         self.optimizer = torch.optim.Adam(self.critic_v.parameters(), lr=value_lr,eps=1e-5)
         self.lossfunc = nn.MSELoss()
@@ -138,6 +122,9 @@ class Critic:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+    def compute_loss(self, current_q1, current_q2, target_q):
+        return self.lossfunc(current_q1, target_q) + self.lossfunc(current_q2, target_q)
 
 
 """------------------------------------------------------------------"""
