@@ -51,7 +51,7 @@ class MapCanvas(QWidget):
         self.explosions_id = []
 
         # 爆炸动画帧率控制
-        self.explosion_frame_rate = 100  # 每帧持续时间(毫秒)
+        self.explosion_frame_rate = 500  # 每帧持续时间(毫秒)
         self.explosion_timer = QTimer(self)
         self.explosion_timer.timeout.connect(self.update_explosions)
         self.explosion_timer.start(self.explosion_frame_rate)

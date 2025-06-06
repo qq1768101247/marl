@@ -39,29 +39,6 @@ class EvaluationThread(QThread):
                 # 更新UI
                 step += 1
 
-                # 获取最新的损失值
-                actor_losses = [0] * self.env.num_agents  # 占位，实际应从算法中获取
-                critic_losses = [0] * self.env.num_agents  # 占位，实际应从算法中获取
-                entropies = [0] * self.env.num_agents  # 占位，实际应从算法中获取
-
-                # 如果算法提供了获取损失的方法，则使用它
-                if hasattr(self.algorithm, 'get_losses'):
-                    actor_losses, critic_losses = self.algorithm.get_losses()
-
-                # 如果算法提供了获取熵的方法，则使用它
-                if hasattr(self.algorithm, 'get_entropies'):
-                    entropies = self.algorithm.get_entropies()
-
-                self.update_signal.emit({
-                    'episode': episode + 1,
-                    'step': step,
-                    'positions': self.env.agent_positions,
-                    'rewards': rewards,
-                    'total_rewards': episode_reward,
-                    'actor_losses': actor_losses,
-                    'critic_losses': critic_losses,
-                    'entropies': entropies  # 新增熵数据
-                })
                 if step % 100 == 0:
                     print(f"Episode {episode + 1}/{self.num_episodes}, {step=}")
                 # 控制训练速度
