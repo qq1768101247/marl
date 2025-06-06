@@ -397,6 +397,8 @@ class MainWindow(QMainWindow):
     def on_map_changed(self, map_name):
         self.current_env = self.environments[map_name]
         self.map_canvas.env = self.current_env
+        self.map_canvas.bg_image = self.map_canvas.bg_images[map_name]
+        self.map_canvas.bg_pixmap = None
         self.map_canvas.update_canvas()
         self.agent_status.update_status(self.current_env)
         self.current_algorithm = self.algorithms[self.algorithm_combo.currentText()](self.current_env)

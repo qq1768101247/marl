@@ -23,13 +23,18 @@ plt.rcParams['axes.unicode_minus'] = False
 
 
 class MapCanvas(QWidget):
-    def __init__(self, env, render=True, parent=None):
+    def __init__(self, env, render=True, parent=None, map_name="简单地图"):
         super().__init__(parent)
         self.env = env
         self.setMinimumSize(400, 400)
         self.target_image = QImage("resource/image/enemy2.png")
         self.plane_image = QImage("resource/image/blue.png")
-        self.bg_image = QImage("resource/image/bg.png")  # 你的背景图片路径
+        self.bg_images = {
+            "简单地图": QImage("resource/image/bg1.png"),
+            "中等地图": QImage("resource/image/bg2.png"),
+            "复杂地图": QImage("resource/image/bg3.png")
+        }
+        self.bg_image = self.bg_images[map_name]
         self.bg_pixmap = None
         self.last_size = None
         self.render = render
