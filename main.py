@@ -451,6 +451,7 @@ class MainWindow(QMainWindow):
             self.evaluation_thread.running = False
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
+            self.eva_button.setEnabled(True)
 
 
     def on_training_update(self, data):

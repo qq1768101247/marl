@@ -71,7 +71,7 @@ class AircraftEnv(Env):
 
         for i in range(self.num_targets):
             attempt = 0
-            while attempt < max_attempts:
+            while 1:
                 x = random.randint(150, self.map_size[0]-150)
                 y = random.randint(150, self.map_size[1]-400)
 
@@ -86,7 +86,7 @@ class AircraftEnv(Env):
                 # 检查与其他目标点的距离
                 for target in self.targets:
                     dist = math.sqrt((x - target['x']) ** 2 + (y - target['y']) ** 2)
-                    if dist < 100:  # 目标点之间的最小距离
+                    if dist < 50:  # 目标点之间的最小距离
                         too_close = True
                         break
 
@@ -137,7 +137,7 @@ class AircraftEnv(Env):
                 'die_time': 0,
                 'vision': 120,
                 'volume': 5,
-                'bulleted_num': 40,
+                'bulleted_num': 80,
                 'damaged': 0,
                 'blood': 100,
                 'healthy': 100,
